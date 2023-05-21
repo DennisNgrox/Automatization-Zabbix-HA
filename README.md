@@ -37,6 +37,7 @@
       - DB_MySQL_node1 8.0
       - DB_MySQL_node2 8.0
     
+      - Sistema Operacional utilizado: CentOS 8
 
 
   
