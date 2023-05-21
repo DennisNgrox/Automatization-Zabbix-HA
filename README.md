@@ -10,7 +10,7 @@
 </div>
 
 
-<b>Olá, este repositório foi criado para salvar e atualizar a automação em Ansible da criação de um ambiente Zabbix em Alta Disponibilidade</b>
+<b>Este repositório foi criado para salvar e atualizar a automação em Ansible da criação de um ambiente Zabbix em Alta Disponibilidade</b>
 
 
 
