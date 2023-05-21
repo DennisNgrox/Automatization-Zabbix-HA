@@ -10,9 +10,9 @@
 </div>
 
 
-Olá, este repositório foi criado para salvar e atualizar a automação em Ansible da criação de um ambiente Zabbix em Alta Disponibilidade
+<b>Olá, este repositório foi criado para salvar e atualizar a automação em Ansible da criação de um ambiente Zabbix em Alta Disponibilidade</b>
 
-Esse repositório contém:
+
 
 [Scripts]
 
@@ -21,13 +21,13 @@ Esse repositório contém:
     
 [Observação]
  
-    - Necessário 6 Máquinas Virtuais
+    - Necessário 6 Máquinas Virtuais:
        - zabbix-front_end
        - zabbix-server_node1
        - zabbix-server_node2
        - DB_MySQL_node1
        - DB_MySQL_node2
-       - Machine response for execute Ansible
+       - Máquina responsável por executar o playbook
  
   [infraestrutura]
  
@@ -39,8 +39,6 @@ Esse repositório contém:
     
 
 
-
-<div align="center">
   
   
 ![text-x-script-icon](https://i.ibb.co/0KJLTQL/image-git.png)
@@ -63,5 +61,17 @@ Esse repositório contém:
  
  [Variaveis a ser definidas]
  
+     - Em construção
+ 
+ 
+ <h1></h1>
+ <div align="center">
+ 
+  
+  [Se gostou desse repositório]
+  
+      - Deixe sua estrelinha e compartilhe esse repositório!
+  
+ </div>
  
  
