@@ -1,4 +1,4 @@
-<h1 align="center"> Tasks Automation </h1>
+<h1 align="center"> Automatização de Tarefas </h1>
 
 <div align="center">
 
@@ -9,25 +9,59 @@
 
 </div>
 
-Hi, this repository was created to save and update Ansible Automation for Zabbix High Availability
 
-This repository contais:
+Olá, este repositório foi criado para salvar e atualizar a automação em Ansible da criação de um ambiente Zabbix em Alta Disponibilidade
+
+Esse repositório contém:
 
 [Scripts]
 
-    - Tasks Automatization
-    - Code in Yaml
+    - Tarefas automatizadas
+    - Código em Yaml
     
-[Observation]
-  
-    - It is necessary to know how to read the code in yaml
+[Observação]
+ 
+    - Necessário 6 Máquinas Virtuais
+       - zabbix-front_end
+       - zabbix-server_node1
+       - zabbix-server_node2
+       - DB_MySQL_node1
+       - DB_MySQL_node2
+       - Machine response for execute Ansible
+ 
+  [infraestrutura]
+ 
+      - Zabbix-Front_end 6.0
+      - Zabbix-Server-node1 6.0
+      - Zabbix-Server-node2 6.0
+      - DB_MySQL_node1 8.0
+      - DB_MySQL_node2 8.0
     
 
 
 
 <div align="center">
   
-  <h1></h1>
   
-![text-x-script-icon](https://media.tenor.com/JO11AZatqkkAAAAC/city.gif)
-  
+![text-x-script-icon](https://i.ibb.co/0KJLTQL/image-git.png)
+
+ <h1></h1>
+
+[Explicação do funcionamento do ambiente]
+    
+     - O Zabbix contém 2 nodes, um no estado "active" e outro no estado "standby",
+       o node em "standby" realiza checagens no node "active" para validar se o mesmo está UP, 
+       caso o node "active" fique down, o node em "standby" se torna o node "active" e torna o node down em "stopped", "inactive", "standby", depende do caso.
+ 
+     -  O Front-end se comunica diretamente com o banco validando na tabela de "nodes" qual o node active e assim realiza a conexão com o node "active".
+ 
+     - O banco de dados está configurado para replicar de formar Master/Master, ambos escrevem um no outro. 
+       Caso o banco A fique down, o banco B tomará o lugar impedindo que o Zabbix fique down. 
+       Quando o banco A ficar UP, ocorrerá uma sincronização de dados afim de ambos os bancos manterem os mesmos dados.
+ 
+ <h1></h1>
+ 
+ [Variaveis a ser definidas]
+ 
+ 
+ 
