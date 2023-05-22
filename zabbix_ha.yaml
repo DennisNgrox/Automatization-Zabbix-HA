@@ -37,6 +37,11 @@
 
 - name: MySQL -- Installl
   hosts: banco
+  vars:
+    user: repli
+    password: Teste#20
+    db_host1: <ip>
+    db_host2: <ip>
   tasks:
     - name: Install Component DB - Mysql - Install
       yum:
@@ -48,19 +53,34 @@
         name: mysqld
         state: started
         enabled: true
-    
-    - name: comandos executados para criação da database, user e privilegios
+
+    - name: Create a new database with name 'bobdata'
+      community.mysql.mysql_db:
+        name: zabbix
+        state: present
+        encoding: utf8mb4
+
+    - name: Create database user with name 'replica' and password 'Teste#20' with replication database privileges
+      community.mysql.mysql_user:
+        name: replica
+        password: Teste#20
+        host: "{{ db_host2 }}"
+        priv: '*.*:SUPER,REPLICATION CLIENT'
+        state: present
+
+    - name: Create database user with name 'zabbix' and password 'Teste#20' with ALL database privileges
+      community.mysql.mysql_user:
+        name: zabbix
+        password: Teste#20
+        host: "{{ db_host1 }}"
+        priv: '*.*:ALL'
+        state: present
+
+    - name: creators = 1
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - mysql -u root --execute="create database zabbix character set utf8mb4 collate utf8mb4_bin;"
-        - mysql -u root --execute="create user zabbix@192.168.32.131 identified by '<senha>';"
-        - mysql -u root --execute="grant all privileges on zabbix.* to zabbix@192.168.32.131;"
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
-        - mysql -u root --execute="create user 'repli'@'ipmaquina2' identified by '<senha>';"
-        - mysql -u root --execute="grant replication slave on *.* to 'repli'@'<ipmaquina2>';"
-        - mysql -u root --execute="show master status \G" | grep "position" | cut -d\":" -f2
-        
 
 
 - name: Configurações Zabbix - alteração do arquivo de conf, nginx e criação do schema no banco
