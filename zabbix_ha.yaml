@@ -35,10 +35,10 @@
         - zabbix-agent
         - zabbix-selinux-policy
 
-- name: MySQL -- Installl
+- name: MySQL -- Install
   hosts: banco
   vars:
-    user: repli
+    user: replica
     password: Teste#20
     db_host1: <ip>
     db_host2: <ip>
@@ -60,9 +60,9 @@
         state: present
         encoding: utf8mb4
 
-    - name: Create database user with name 'replica' and password 'Teste#20' with replication database privileges
+    - name: Create database user with name '{{ user }}' and password 'Teste#20' with replication database privileges
       community.mysql.mysql_user:
-        name: replica
+        name: "{{ user }}"
         password: Teste#20
         host: "{{ db_host2 }}"
         priv: '*.*:SUPER,REPLICATION CLIENT'
@@ -76,11 +76,28 @@
         priv: '*.*:ALL'
         state: present
 
-    - name: creators = 1
+    - name: log_bin_trust_function_creators
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
+
+    - name: get replication primary
+      mysql_replication:
+        login_host: "localhost"
+        login_user: "root"
+        mode: getprimary
+      register: mysql_repli_host1
+
+    - name: get log position for master status
+      debug:
+        var: mysql_repli_host1.Position
+
+    - name: log_bin_trust_function_creators
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='ipLocalMaquina1', SOURCE_USER='repl', SOURCE_PORT=3306, SOURCE_PASSWORD='xxxxx', SOURCE_LOG_FILE='binlog.00000x', SOURCE_LOG_POS=156, SOURCE_SSL=1;"
 
 
 - name: Configurações Zabbix - alteração do arquivo de conf, nginx e criação do schema no banco
