@@ -54,7 +54,7 @@
         state: started
         enabled: true
 
-    - name: Create a new database with name 'bobdata'
+    - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
         name: zabbix
         state: present
