@@ -54,17 +54,22 @@
         state: started
         enabled: true
 
+    - name: Adicionar bind-address, server-id, log_bin_trust_function_creators
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop: 
+
     - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
         name: zabbix
         state: present
         encoding: utf8mb4
 
-    - name: Create database user with name '{{ user }}' and password 'Teste#20' with replication database privileges
+    - name: Create database user with name '{{ user }}' and password 'Teste#20' with replication database privileges - máquina 1
       community.mysql.mysql_user:
         name: "{{ user }}"
         password: Teste#20
-        host: "{{ db_host2 }}"
+        host: "{ db_host2 }}{"
         priv: '*.*:SUPER,REPLICATION CLIENT'
         state: present
 
