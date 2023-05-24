@@ -35,7 +35,7 @@
         - zabbix-agent
         - zabbix-selinux-policy
 
-- name: MySQL -- Install
+- name: MySQL -- Install <ambos os hosts>
   hosts: banco
   vars:
     user: replica
@@ -54,10 +54,6 @@
         state: started
         enabled: true
 
-    - name: Adicionar bind-address, server-id, log_bin_trust_function_creators
-      ansible.builtin.shell:
-        cmd: "{{ item }}"
-      loop: 
 
     - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
@@ -65,18 +61,18 @@
         state: present
         encoding: utf8mb4
 
-    - name: Create database user with name '{{ user }}' and password 'Teste#20' with replication database privileges - máquina 1
+    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host1 }}
       community.mysql.mysql_user:
         name: "{{ user }}"
-        password: Teste#20
-        host: "{ db_host2 }}{"
+        password: "{{ password }}"
+        host: "{{ db_host2 }}"
         priv: '*.*:SUPER,REPLICATION CLIENT'
         state: present
 
-    - name: Create database user with name 'zabbix' and password 'Teste#20' with ALL database privileges
+    - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
       community.mysql.mysql_user:
         name: zabbix
-        password: Teste#20
+        password: "{{ password }}"
         host: "{{ db_host1 }}"
         priv: '*.*:ALL'
         state: present
@@ -87,9 +83,51 @@
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
 
+- name: Copy file my.cnf {{ db_host1 }}
+  hosts: <banco1>
+  vars:
+    db_host: <ip>
+    server-id: 1
+  tasks:
+    - name: Copy file with owner and permissions bind-address, server-id, log_bin
+      ansible.builtin.copy:
+        src: /home/dennis/my.cnf
+        dest: /etc/my.cnf
+        owner: root
+        group: root
+        mode: '0544'
+
+- name: Copy file my.cnf {{ db_host2 }}
+  hosts: <banco2>
+  vars:
+    db_host: <ip>
+    server-id: 2
+  tasks:
+    - name: Copy file with owner and permissions bind-address, server-id, log_bin
+      ansible.builtin.copy:
+        src: /home/dennis/my.cnf
+        dest: /etc/my.cnf
+        owner: root
+        group: root
+        mode: '0544'
+        
+- name: Configuring Slave-server to replicate from Master-server - Master - {{ db_host1 }}
+  hosts: db_host2
+  vars:
+    user: replica
+    password: Teste#20
+    db_host1: <ip>
+    db_host2: <ip>
+  tasks:
+    - name: stop threads replication
+      mysql_replication:
+        login_host: "{{ db_host2 }}"
+        login_user: "root"
+        mode: stopreplica
+  
     - name: get replication primary
       mysql_replication:
-        login_host: "localhost"
+        login_host: "{{ db_host1 }}"
         login_user: "root"
         mode: getprimary
       register: mysql_repli_host1
@@ -98,12 +136,64 @@
       debug:
         var: mysql_repli_host1.Position
 
-    - name: log_bin_trust_function_creators
+    - name: Configuring Slave-server to replicate from Master-server
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='ipLocalMaquina1', SOURCE_USER='repl', SOURCE_PORT=3306, SOURCE_PASSWORD='xxxxx', SOURCE_LOG_FILE='binlog.00000x', SOURCE_LOG_POS=156, SOURCE_SSL=1;"
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host1 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host1.File }}', SOURCE_LOG_POS='{{ mysql_repli_host1.Position }}', SOURCE_SSL=1;"
 
+    - name: start threads replication
+      mysql_replication:
+        login_host: "{{ db_host2 }}"
+        login_user: "root"
+        mode: startreplica
+
+- name: Configuring Master-server to replicate from Master-server - Master - {{ db_host2 }}
+  hosts: db_host2
+  vars:
+    user: replica
+    password: Teste#20
+    db_host1: <ip>
+    db_host2: <ip>
+  tasks:
+    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host2 }}
+      community.mysql.mysql_user:
+        name: "{{ user }}"
+        password: "{{ password }}"
+        host: "{{ db_host1 }}"
+        priv: '*.*:SUPER,REPLICATION CLIENT'
+        state: present
+  
+- name: Configuring Master-server to replicate from Master-server - {{ db_host1 }}
+  hosts: db_host2
+  vars:
+    user: replica
+    password: "{{ password }}"
+    db_host1: <ip>
+    db_host2: <ip>
+  tasks:
+    - name: get replication primary
+      mysql_replication:
+        login_host: "{{ db_host2 }}"
+        login_user: "root"
+        mode: getprimary
+      register: mysql_repli_host2
+
+    - name: get log position for master status
+      debug:
+        var: mysql_repli_host2.Position
+
+    - name: Configuring Slave-server to replicate from Master-server
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host2 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host2.File }}', SOURCE_LOG_POS='{{ mysql_repli_host2.Position }}', SOURCE_SSL=1;"
+
+    - name: start replication
+      mysql_replication:
+        login_host: "{{ db_host2 }}"
+        login_user: "root"
+        mode: startreplica
 
 - name: Configurações Zabbix - alteração do arquivo de conf, nginx e criação do schema no banco
   hosts: zabbix-server
