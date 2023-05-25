@@ -28,10 +28,8 @@
         state: latest
       vars:
         packages:
-        - zabbix-server-mysql 
-        - zabbix-web-mysql
+        - zabbix-server-mysql
         - zabbix-sql-scripts 
-        - zabbix-nginx-conf
         - zabbix-agent
         - zabbix-selinux-policy
         - haproxy
@@ -343,4 +341,7 @@
         - zabbix-agent
         - haproxy
         - php-fpm
+
+
+
 
