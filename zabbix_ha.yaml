@@ -34,6 +34,48 @@
         - zabbix-nginx-conf
         - zabbix-agent
         - zabbix-selinux-policy
+        - haproxy
+    
+    - name: create archive haproxy
+      ansible.builtin.file:
+        path: /etc/haproxy/haproxy.cfg
+        state: touch 
+
+    - name: Creating a file with content
+      copy:
+        dest: "/etc/haproxy/haproxy.cfg"
+        content: |
+          global
+              log /dev/log local0 info
+              log /dev/log local0 notice
+              user haproxy
+              maxconn 4096
+              group haproxy
+
+          defaults
+              log global
+              retries 2
+              timeout connect 10m
+              timeout server 10m
+              timeout client 10m
+              option redispatch
+              option forceclose
+
+          listen mysql-cluster
+          bind 127.0.0.1:3306
+          option tcplog
+          mode tcp
+          balance roundrobin
+          server mysql-master {{ db_host1 }}:3306 check agent-check agent-port 1234 inter 10s fall 6 rise 6 on-marked-down shutdown-sessions on-marked-up shutdown-backup-sessions
+          server mysql-slave {{ db_hos2 }}:3306 check inter 10s fall 6 rise 6 backup
+
+          listen stats
+              bind *:8909 
+              mode http
+              stats enable 
+              stats uri /stats
+              stats realm HAProxy\ Statistics
+              stats auth admin:admin
 
 - name: MySQL -- Install <ambos os hosts>
   hosts: banco
@@ -48,12 +90,11 @@
         name: mysql-server
         state: latest
 
-    - name: start service loop
+    - name: start service MySQL
       service:
         name: mysqld
         state: started
         enabled: true
-
 
     - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
@@ -83,7 +124,7 @@
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
 
-- name: Copy file my.cnf {{ db_host1 }}
+- name: Copy file my.cnf {{ db_host1 }} and install MySQL lag
   hosts: <banco1>
   vars:
     db_host: <ip>
@@ -96,6 +137,70 @@
         owner: root
         group: root
         mode: '0544'
+    
+    - name: install php
+      yum:
+        name: "{{ packages }}"
+        state: latest
+      vars:
+        packages:
+          - php
+          - php-mysqlnd
+    
+    - name: add content in mysql-lag.php -- edit user and password
+      ansible.builtin.copy:
+        src: /home/dennis/mysql-lag.php
+        dest: /etc/zabbix/scripts/mysql-lag.php
+        owner: root
+        group: root
+        mode: '0555'
+
+    - name: create archive /lib/systemd/system/mysql-lag.service
+      ansible.builtin.file:
+        path: /lib/systemd/system/mysql-lag.service
+        state: touch
+
+    - name: content in /lib/systemd/system/mysql-lag.service
+      ansible.builtin.copy:
+        dest: /lib/systemd/system/mysql-lag.service
+        content: |
+          [Unit]
+          Description=Servico para checar o sincronismo do banco de dados utilizado pelo HAproxy
+          After=network.target
+
+          [Service]
+          Type=simple
+          EnvironmentFile=/etc/default/mysql-lag
+          ExecStart=/usr/bin/php /etc/zabbix/scripts/mysql-lag.php "$SET_ACTIVE_NODE"
+          Restart=always
+          TimeoutStartSec=0
+
+          [Install]
+          WantedBy=default.target
+
+    - name: create archive for ambient variable
+      ansible.builtin.file:
+        path: /etc/default/mysql-lag
+        state: touch
+
+    - name: content in /etc/default/mysql-lag
+      ansible.builtin.copy:
+        dest: /etc/default/mysql-lag
+        content: |
+          # Fixa node 01 como ativo
+          #SET_ACTIVE_NODE="node01" 
+
+          # Fixa node 02 como ativo
+          #SET_ACTIVE_NODE="node02" 
+
+          # Qualquer outro valor vai ser realizado a checagem
+          SET_ACTIVE_NODE="check"
+
+    - name: enable and start service mysql-lag.php
+      service:
+        name: mysql-lag
+        state: started
+        enabled: true
 
 - name: Copy file my.cnf {{ db_host2 }}
   hosts: <banco2>
@@ -110,7 +215,8 @@
         owner: root
         group: root
         mode: '0544'
-        
+
+
 - name: Configuring Slave-server to replicate from Master-server - Master - {{ db_host1 }}
   hosts: db_host2
   vars:
@@ -223,7 +329,18 @@
         - nginx
         - php-fpm
 
-
-
-
+- name: Enable and start services
+  hosts: zabbix-server
+  tasks:
+    - name: enable and start services
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop: 
+        - zabbix-server
+        - nginx
+        - zabbix-agent
+        - haproxy
+        - php-fpm
 
