@@ -58,6 +58,9 @@
        Caso o banco A fique down, o banco B tomará o lugar impedindo que o Zabbix fique down. 
        Quando o banco A ficar UP, ocorrerá uma sincronização de dados afim de ambos os bancos manterem os mesmos dados.
  
+     -  O Zabbix-Server realizará a conexão com o Banco de Dados através do HAPROXY, que é responsável por realizar checkagens se a replicação está funcionando
+        e se está disponível para conexão.
+ 
  <h1></h1>
  
  [Variaveis a ser definidas]
