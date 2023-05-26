@@ -7,6 +7,7 @@
   loop:
     - systemctl disable firewalld
     - systemctl stop firewalld
+    - setenforce 0
 
 - name: Instaling Zabbix
   hosts: zabbix-server
@@ -76,12 +77,13 @@
               stats auth admin:admin
 
 - name: MySQL -- Install <ambos os hosts>
-  hosts: banco
+  hosts: server-bancos
+  vars_files: "/archives/vars.yaml"
   vars:
-    user: replica
-    password: Teste#20
-    db_host1: <ip>
-    db_host2: <ip>
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
   tasks:
     - name: Install Component DB - Mysql - Install
       yum:
@@ -123,9 +125,10 @@
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
 
 - name: Copy file my.cnf {{ db_host1 }} and install MySQL lag
-  hosts: <banco1>
+  vars_files: "/archives/vars.yaml"
+  hosts: "{{ db_host1 }}"
   vars:
-    db_host: <ip>
+    db_host: "{{ db_host1 }}"
     server-id: 1
   tasks:
     - name: Copy file with owner and permissions bind-address, server-id, log_bin
@@ -201,9 +204,10 @@
         enabled: true
 
 - name: Copy file my.cnf {{ db_host2 }}
-  hosts: <banco2>
+  vars_files: "/archives/vars.yaml"
+  hosts: "{{ db_host2 }}"
   vars:
-    db_host: <ip>
+    db_host: "{{ db_host2 }}"
     server-id: 2
   tasks:
     - name: Copy file with owner and permissions bind-address, server-id, log_bin
@@ -217,10 +221,10 @@
 - name: Configuring Slave-server to replicate from Master-server - Master - {{ db_host1 }}
   hosts: db_host2
   vars:
-    user: replica
-    password: Teste#20
-    db_host1: <ip>
-    db_host2: <ip>
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
   tasks:
     - name: stop threads replication
       mysql_replication:
@@ -252,12 +256,12 @@
         mode: startreplica
 
 - name: Configuring Master-server to replicate from Master-server - Master - {{ db_host2 }}
-  hosts: db_host2
+  hosts: "{{ db_host2 }}"
   vars:
-    user: replica
-    password: Teste#20
-    db_host1: <ip>
-    db_host2: <ip>
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
   tasks:
     - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host2 }}
       community.mysql.mysql_user:
@@ -268,12 +272,12 @@
         state: present
   
 - name: Configuring Master-server to replicate from Master-server - {{ db_host1 }}
-  hosts: db_host2
+  hosts: "{{ db_host2 }}"
   vars:
-    user: replica
+    user: "{{ user }}"
     password: "{{ password }}"
-    db_host1: <ip>
-    db_host2: <ip>
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
   tasks:
     - name: get replication primary
       mysql_replication:
@@ -298,18 +302,23 @@
         login_user: "root"
         mode: startreplica
 
-- name: Configurações Zabbix - alteração do arquivo de conf, nginx e criação do schema no banco
-  hosts: zabbix-server
+- name: Configurações Zabbix server node 1 - alteração do arquivo de configuração e criação do schema no Banco
+  hosts: "{{ zabbix_server1 }}"
+  vars_files: "/archives/vars.yaml"
   vars:
-    banco: <mysql-node1>
-    banco2: <mysql-node2>
+    zabbix_server1: "{{ zabbix_server1 }}"
+    password: "{{ password }}"
+    banco1: "{{ db_host1 }}"
+    banco2: "{{ db_host2 }}"
   tasks:
     - name: Configurações Zabbix
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - sed -i s'/# DBPassword=/DBPassword=Julia#20/' /etc/zabbix/zabbix_server.conf
-        - sed -i s'/# DBHost=localhost/DBHost=192.168.32.131/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# DBPassword=/DBPassword={{ password }}/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# DBHost=localhost/DBHost=127.0.0.1/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# HANodeName=/HANodeName=zbx_node1/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# NodeAddress=localhost:1005/NodeAddress={{ zabbix_server1 }}:10051/' /etc/zabbix/zabbix_server.conf  
         - zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -h {{ db_host1 }} -uzabbix -p'{{ password }}' zabbix
         - mysql -u root --execute="set global log_bin_trust_function_creators = 0;"
 
@@ -321,15 +330,39 @@
       loop:
         - zabbix-agent
         - zabbix-server
-        - nginx
-        - php-fpm
 
+- name: Configurações Zabbix server node 2 - alteração do arquivo de configuração
+  hosts: "{{ zabbix_server2 }}"
+  vars_files: "/archives/vars.yaml"
+  vars:
+    zabbix_server2: "{{ zabbix_server2 }}"
+    password: "{{ password }}"
+    banco1: "{{ db_host1 }}"
+    banco2: "{{ db_host2 }}"
+  tasks:
+    - name: Configurações Zabbix
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - sed -i s'/# DBPassword=/DBPassword={{ password }}/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# DBHost=localhost/DBHost=127.0.0.1/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# HANodeName=/HANodeName=zbx_node2/' /etc/zabbix/zabbix_server.conf
+        - sed -i s'/# NodeAddress=localhost:1005/NodeAddress={{ zabbix_server2 }}:10051/' /etc/zabbix/zabbix_server.conf  
+
+    - name: start service loop
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - zabbix-agent
+        - zabbix-server
 
 - name: Install and Configure php-fpm nginx zabbix-web
-  hosts: zabbix-web
+  hosts: "{{ web_host }}"
+  vars_files: "/archives/vars.yaml"
   vars: 
-    host_web: zabbix-web
-
+    web_host: "{{ web_host }}"
   tasks:  
     - name: Wget Repository Zabbix
       ansible.builtin.get_url:
@@ -357,7 +390,7 @@
         cmd: "{{ item }}"
       loop:
         - sed -i s'/#        listen          8080;/        listen          80;/' /etc/nginx/conf.d/zabbix.conf
-        - sed -i s'/#        server_name     example.com;/        server_name     {{ host_web }};/' /etc/nginx/conf.d/zabbix.conf
+        - sed -i s'/#        server_name     example.com;/        server_name     {{ web_host }};/' /etc/nginx/conf.d/zabbix.conf
 
     - name: enable and start services
       service:
@@ -369,7 +402,7 @@
         - php-fpm
         - zabbix-agent
 
-- name: Enable and start services
+- name: Enable and start services haproxy
   hosts: zabbix-server
   tasks:
     - name: enable and start services
@@ -378,8 +411,6 @@
         state: started
         enabled: true
       loop: 
-        - zabbix-server
-        - zabbix-agent
         - haproxy
         
 
