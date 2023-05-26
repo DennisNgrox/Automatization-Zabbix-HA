@@ -1,0 +1,8 @@
+
+user: replica
+password: Teste#20
+zabbix_server1: <ip>
+zabbix_server2: <ip>
+db_host1: <ip>
+db_host2: <ip>
+web_host: <ip>
