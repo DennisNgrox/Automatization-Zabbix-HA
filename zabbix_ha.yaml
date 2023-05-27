@@ -9,7 +9,9 @@
     loop:
       - systemctl disable firewalld
       - systemctl stop firewalld
+      - sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
       - setenforce 0
+      - setsebool -P httpd_can_network_connect_db 1
 
 - name: Instaling Zabbix
   hosts: zabbix-server
@@ -43,6 +45,7 @@
         - zabbix-agent
         - zabbix-selinux-policy
         - haproxy
+        - mysql-server
     
     - name: create archive haproxy
       ansible.builtin.file:
@@ -111,19 +114,19 @@
       loop:
         - python3 -m pip install PyMySQL
 
+    - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
+      community.mysql.mysql_user:
+        name: zabbix
+        password: "{{ password }}"
+        host: "%"
+        priv: '*.*:ALL'
+        state: present
+
     - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
         name: zabbix
         state: present
         encoding: utf8mb4
-
-    - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
-      community.mysql.mysql_user:
-        name: zabbix
-        password: "{{ password }}"
-        host: "{{ db_host1 }}"
-        priv: '*.*:ALL'
-        state: present
 
 - name: MySQL -- create user {{ user }} {{ db_host1 }}
   hosts: "{{ db_host1 }}"
@@ -139,11 +142,18 @@
         name: "{{ user }}"
         password: "{{ password }}"
         host: "{{ db_host2 }}"
-        priv: '*.*:SUPER,REPLICATION CLIENT'
+        priv: '*.*:ALL'
         state: present
 
+    - name: GRANT USER REPLICATION
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="GRANT ALL PRIVILEGES ON *.* TO '{{ user }}'@'{{ db_host2 }}';"
+    
+
 - name: MySQL -- create user {{ user }} {{ db_host2 }}
-  hosts: "{{ db_host1 }}"
+  hosts: "{{ db_host2 }}"
   vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
     user: "{{ user }}"
@@ -156,8 +166,14 @@
         name: "{{ user }}"
         password: "{{ password }}"
         host: "{{ db_host1 }}"
-        priv: '*.*:SUPER,REPLICATION CLIENT'
+        priv: '*.*:ALL'
         state: present
+
+    - name: GRANTS USER REPLICATION
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="GRANT ALL PRIVILEGES ON *.* TO '{{ user }}'@'{{ db_host1 }}';"
     
 
 - name: Copy file my.cnf {{ db_host1 }} and install MySQL lag
@@ -175,11 +191,17 @@
         owner: root
         group: root
 
+    - name: Restart service mysql
+      ansible.builtin.service:
+        name: mysqld
+        state: restarted
+
     - name: log_bin_trust_function_creators
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
+        - mysql -u root --execute="set global server_id = 1;"
         
     - name: install php
       yum:
@@ -268,12 +290,18 @@
         mode: 0777
         owner: root
         group: root
+
+    - name: Restart service mysqld
+      ansible.builtin.service:
+        name: mysqld
+        state: restarted
         
     - name: log_bin_trust_function_creators
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
+        - mysql -u root --execute="set global server_id = 2;"
 
 - name: Configuring Slave-server to replicate from Master-server - Master - "{{ db_host1 }}"
   hosts: "{{ db_host2 }}"
@@ -302,34 +330,12 @@
       debug:
         var: mysql_repli_host1.Position
 
-    - name: Configuring Slave-server to replicate from Master-server
+    - name: Configuring Slave-server to replicate from Master-server and start replica
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host1 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host1.File }}', SOURCE_LOG_POS='{{ mysql_repli_host1.Position }}';"
-
-    - name: start threads replication
-      mysql_replication:
-        login_host: "{{ db_host2 }}"
-        login_user: "replica"
-        mode: startreplica
-
-- name: Configuring Master-server to replicate from Master-server - Master - {{ db_host2 }}
-  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
-  hosts: "{{ db_host2 }}"
-  vars:
-    user: "{{ user }}"
-    password: "{{ password }}"
-    db_host1: "{{ db_host1 }}"
-    db_host2: "{{ db_host2 }}"
-  tasks:
-    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host2 }}
-      community.mysql.mysql_user:
-        name: "{{ user }}"
-        password: "{{ password }}"
-        host: "{{ db_host1 }}"
-        priv: '*.*:SUPER,REPLICATION CLIENT'
-        state: present
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host1 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host1.File }}', SOURCE_LOG_POS={{ mysql_repli_host1.Position }}, SOURCE_SSL=1;"
+        - mysql -u root --execute="start replica;"
   
 - name: Configuring Master-server to replicate from Master-server - {{ db_host1 }}
   vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
@@ -344,6 +350,7 @@
       mysql_replication:
         login_host: "{{ db_host2 }}"
         login_user: "replica"
+        login_password: "{{ password }}"
         mode: getmaster
       register: mysql_repli_host2
 
@@ -355,13 +362,8 @@
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host2 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host2.File }}', SOURCE_LOG_POS='{{ mysql_repli_host2.Position }}', SOURCE_SSL=1;"
-
-    - name: start replication
-      mysql_replication:
-        login_host: "{{ db_host2 }}"
-        login_user: "replica"
-        mode: startreplica
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host2 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host2.File }}', SOURCE_LOG_POS={{ mysql_repli_host2.Position }}, SOURCE_SSL=1;"
+        - mysql -u root --execute="start replica;"
 
 - name: Configurações Zabbix server node 1 - alteração do arquivo de configuração e criação do schema no Banco
   hosts: "{{ zabbix_server1 }}"
@@ -379,9 +381,9 @@
         - sed -i s'/# DBPassword=/DBPassword={{ password }}/' /etc/zabbix/zabbix_server.conf
         - sed -i s'/# DBHost=localhost/DBHost=127.0.0.1/' /etc/zabbix/zabbix_server.conf
         - sed -i s'/# HANodeName=/HANodeName=zbx_node1/' /etc/zabbix/zabbix_server.conf
-        - sed -i s'/# NodeAddress=localhost:1005/NodeAddress={{ zabbix_server1 }}:10051/' /etc/zabbix/zabbix_server.conf  
+        - sed -i s'/# NodeAddress=localhost:10051/NodeAddress={{ zabbix_server1 }}:10051/' /etc/zabbix/zabbix_server.conf  
         - zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -h {{ db_host1 }} -uzabbix -p'{{ password }}' zabbix
-        - mysql -u root --execute="set global log_bin_trust_function_creators = 0;"
+        - mysql -h "{{ db_host1}}" -u zabbix -p'{{ password }}' --execute="set global log_bin_trust_function_creators = 0;"
 
     - name: start service loop
       service:
@@ -408,7 +410,7 @@
         - sed -i s'/# DBPassword=/DBPassword={{ password }}/' /etc/zabbix/zabbix_server.conf
         - sed -i s'/# DBHost=localhost/DBHost=127.0.0.1/' /etc/zabbix/zabbix_server.conf
         - sed -i s'/# HANodeName=/HANodeName=zbx_node2/' /etc/zabbix/zabbix_server.conf
-        - sed -i s'/# NodeAddress=localhost:1005/NodeAddress={{ zabbix_server2 }}:10051/' /etc/zabbix/zabbix_server.conf  
+        - sed -i s'/# NodeAddress=localhost:10051/NodeAddress={{ zabbix_server2 }}:10051/' /etc/zabbix/zabbix_server.conf  
 
     - name: start service loop
       service:
@@ -418,6 +420,7 @@
       loop:
         - zabbix-agent
         - zabbix-server
+        - haproxy
 
 - name: Install and Configure php-fpm nginx zabbix-web
   hosts: "{{ web_host }}"
@@ -435,6 +438,7 @@
       ansible.builtin.yum:
         name: /root/zabbix-release-6.0-4.el8.noarch.rpm
         state: present 
+        disable_gpg_check: true
 
     - name: Install Components Zabbbix
       yum:
