@@ -65,7 +65,12 @@
  
  [Variaveis a ser definidas]
  
-     - Em construção
+     - Necessário editar /archives/my.cnf - Definir IP do servidor 1 de MySQL
+     - Necessário editar /archives/cnf-host2/my.cnf - Definir IP do servidor 2 de MySQL
+     - Necessário editar o código aonde está setado o caminho do arquivo "vars.yaml", a opção a ser editada é "vars_files" no code YAML, necessário editar todos para o caminho aonde se encontra o "vars.yaml"
+     - Necessário editar o arquivo vars.yaml, definir os ip's conforme os nomes das váriveis
+     - Necessário editar o arquivo mysql-lag.php e alterar a variável 'password', setar a senha de acesso ao banco de dados MySQL servidor 1
+     - Necessário utilizar o endereço '127.0.0.1' na tela de configuração (setup.php) do Zabbix, pois quem faz o trabalho de conexão é o HAPROXY
  
  [Pacotes necessários]
  
