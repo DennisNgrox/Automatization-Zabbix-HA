@@ -1,6 +1,6 @@
 <?php
 $mysql = "/bin/mysql";
-$host = 'localhost';
+$host = '127.0.0.1';
 $user = 'root'; // Edit user
 $password = 'PASSWORD'; // Edit password
 $query = "SHOW REPLICA STATUS";
