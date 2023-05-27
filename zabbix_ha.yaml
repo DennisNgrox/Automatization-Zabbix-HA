@@ -122,11 +122,19 @@
         priv: '*.*:ALL'
         state: present
 
-    - name: Create a new database with name 'zabbix'
-      community.mysql.mysql_db:
-        name: zabbix
+    - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
+      community.mysql.mysql_user:
+        name: zabbixweb
+        password: "{{ password }}"
+        host: "{{ web_host }}"
+        priv: '*.*:ALL'
         state: present
-        encoding: utf8mb4
+
+    - name: create database zabbix
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="create database zabbix character set utf8mb4 collate utf8mb4_bin;"
 
 - name: MySQL -- create user {{ user }} {{ db_host1 }}
   hosts: "{{ db_host1 }}"
@@ -449,6 +457,44 @@
         - zabbix-web-mysql
         - zabbix-nginx-conf
         - zabbix-agent
+        - haproxy
+        - mysql-server
+
+    - name: Creating a file with content
+      copy:
+        dest: "/etc/haproxy/haproxy.cfg"
+        content: |
+          global
+              log /dev/log local0 info
+              log /dev/log local0 notice
+              user haproxy
+              maxconn 4096
+              group haproxy
+
+          defaults
+              log global
+              retries 2
+              timeout connect 10m
+              timeout server 10m
+              timeout client 10m
+              option redispatch
+              option forceclose
+
+          listen mysql-cluster
+          bind 127.0.0.1:3306
+          option tcplog
+          mode tcp
+          balance roundrobin
+          server mysql-master {{ db_host1 }}:3306 check agent-check agent-port 1234 inter 10s fall 6 rise 6 on-marked-down shutdown-sessions on-marked-up shutdown-backup-sessions
+          server mysql-slave {{ db_host2 }}:3306 check inter 10s fall 6 rise 6 backup
+
+          listen stats
+              bind *:8909 
+              mode http
+              stats enable 
+              stats uri /stats
+              stats realm HAProxy\ Statistics
+              stats auth admin:admin
 
     - name: Configurations nginx
       ansible.builtin.shell:
@@ -466,6 +512,7 @@
         - nginx
         - php-fpm
         - zabbix-agent
+        - haproxy
 
 - name: Enable and start services haproxy
   hosts: zabbix-server
@@ -478,8 +525,3 @@
       loop: 
         - haproxy
         
-
-
-
-
-
