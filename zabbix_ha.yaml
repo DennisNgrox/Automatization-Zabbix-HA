@@ -2,26 +2,35 @@
 
 - name: Commands All - firewall, selinux
   hosts: all
-  ansible.builtin.shell:
-    cmd: "{{ item }}"
-  loop:
-    - systemctl disable firewalld
-    - systemctl stop firewalld
-    - setenforce 0
+  tasks:
+  - name: Command firewall and selinux
+    ansible.builtin.shell:
+      cmd: "{{ item }}"
+    loop:
+      - systemctl disable firewalld
+      - systemctl stop firewalld
+      - setenforce 0
 
 - name: Instaling Zabbix
   hosts: zabbix-server
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
+  vars:
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
   tasks:
     - name: Wget Repository Zabbix
       ansible.builtin.get_url:
-        url: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbisx-release-6.0-4.el8.noarch.rpm
-        dest: /home/ansible/
+        url: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
+        dest: /root
         mode: '0777'
 
     - name: Install .rpm package
       ansible.builtin.yum:
         name: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
         state: present 
+        disable_gpg_check: True
 
     - name: Install Components Zabbbix
       yum:
@@ -66,7 +75,7 @@
           mode tcp
           balance roundrobin
           server mysql-master {{ db_host1 }}:3306 check agent-check agent-port 1234 inter 10s fall 6 rise 6 on-marked-down shutdown-sessions on-marked-up shutdown-backup-sessions
-          server mysql-slave {{ db_hos2 }}:3306 check inter 10s fall 6 rise 6 backup
+          server mysql-slave {{ db_host2 }}:3306 check inter 10s fall 6 rise 6 backup
 
           listen stats
               bind *:8909 
@@ -77,8 +86,8 @@
               stats auth admin:admin
 
 - name: MySQL -- Install <ambos os hosts>
-  hosts: server-bancos
-  vars_files: "/archives/vars.yaml"
+  hosts: bancos
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
     user: "{{ user }}"
     password: "{{ password }}"
@@ -96,19 +105,17 @@
         state: started
         enabled: true
 
+    - name: install pymysql
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - python3 -m pip install PyMySQL
+
     - name: Create a new database with name 'zabbix'
       community.mysql.mysql_db:
         name: zabbix
         state: present
         encoding: utf8mb4
-
-    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host1 }}
-      community.mysql.mysql_user:
-        name: "{{ user }}"
-        password: "{{ password }}"
-        host: "{{ db_host2 }}"
-        priv: '*.*:SUPER,REPLICATION CLIENT'
-        state: present
 
     - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
       community.mysql.mysql_user:
@@ -118,27 +125,62 @@
         priv: '*.*:ALL'
         state: present
 
+- name: MySQL -- create user {{ user }} {{ db_host1 }}
+  hosts: "{{ db_host1 }}"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
+  vars:
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
+  tasks:
+    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host1 }}
+      community.mysql.mysql_user:
+        name: "{{ user }}"
+        password: "{{ password }}"
+        host: "{{ db_host2 }}"
+        priv: '*.*:SUPER,REPLICATION CLIENT'
+        state: present
+
+- name: MySQL -- create user {{ user }} {{ db_host2 }}
+  hosts: "{{ db_host1 }}"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
+  vars:
+    user: "{{ user }}"
+    password: "{{ password }}"
+    db_host1: "{{ db_host1 }}"
+    db_host2: "{{ db_host2 }}"
+  tasks:
+    - name: Create database user with name '{{ user }}' and password '{{ password }}' with replication database privileges - {{ db_host2 }}
+      community.mysql.mysql_user:
+        name: "{{ user }}"
+        password: "{{ password }}"
+        host: "{{ db_host1 }}"
+        priv: '*.*:SUPER,REPLICATION CLIENT'
+        state: present
+    
+
+- name: Copy file my.cnf {{ db_host1 }} and install MySQL lag
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
+  hosts: "{{ db_host1 }}"
+  vars:
+    db_host: "{{ db_host1 }}"
+    server_id: 1
+  tasks:
+    - name: Copy file with owner and permissions bind-address, server_id, log_bin
+      ansible.builtin.copy:
+        src: /mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/my.cnf
+        dest: /etc/my.cnf
+        mode: 0777
+        owner: root
+        group: root
+
     - name: log_bin_trust_function_creators
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
         - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
-
-- name: Copy file my.cnf {{ db_host1 }} and install MySQL lag
-  vars_files: "/archives/vars.yaml"
-  hosts: "{{ db_host1 }}"
-  vars:
-    db_host: "{{ db_host1 }}"
-    server-id: 1
-  tasks:
-    - name: Copy file with owner and permissions bind-address, server-id, log_bin
-      ansible.builtin.copy:
-        src: /home/dennis/my.cnf
-        dest: /etc/my.cnf
-        owner: root
-        group: root
-        mode: '0544'
-    
+        
     - name: install php
       yum:
         name: "{{ packages }}"
@@ -148,13 +190,22 @@
           - php
           - php-mysqlnd
     
+    - name: create directory /etc/zabbix/scripts/mysql-lag.php
+      ansible.builtin.file:
+        path: /etc/zabbix/scripts/
+        state: directory
+        mode: 0777
+        owner: root
+        group: root
+    
     - name: add content in mysql-lag.php -- edit user and password
       ansible.builtin.copy:
-        src: /home/dennis/mysql-lag.php
+        src: /mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/mysql-lag.php
         dest: /etc/zabbix/scripts/mysql-lag.php
         owner: root
         group: root
-        mode: '0555'
+        mode: '0777'
+
 
     - name: create archive /lib/systemd/system/mysql-lag.service
       ansible.builtin.file:
@@ -204,22 +255,29 @@
         enabled: true
 
 - name: Copy file my.cnf {{ db_host2 }}
-  vars_files: "/archives/vars.yaml"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   hosts: "{{ db_host2 }}"
   vars:
     db_host: "{{ db_host2 }}"
-    server-id: 2
+    server_id: 2
   tasks:
-    - name: Copy file with owner and permissions bind-address, server-id, log_bin
+    - name: Copy file with owner and permissions bind-address, server_id, log_bin
       ansible.builtin.copy:
-        src: /home/dennis/my.cnf
+        src: /mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/cnf-host2/my.cnf
         dest: /etc/my.cnf
+        mode: 0777
         owner: root
         group: root
-        mode: '0544'
+        
+    - name: log_bin_trust_function_creators
+      ansible.builtin.shell:
+        cmd: "{{ item }}"
+      loop:
+        - mysql -u root --execute="set global log_bin_trust_function_creators = 1;"
 
-- name: Configuring Slave-server to replicate from Master-server - Master - {{ db_host1 }}
-  hosts: db_host2
+- name: Configuring Slave-server to replicate from Master-server - Master - "{{ db_host1 }}"
+  hosts: "{{ db_host2 }}"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
     user: "{{ user }}"
     password: "{{ password }}"
@@ -228,18 +286,19 @@
   tasks:
     - name: stop threads replication
       mysql_replication:
-        login_host: "{{ db_host2 }}"
+        login_host: 127.0.0.1
         login_user: "root"
-        mode: stopreplica
+        mode: stopslave
   
     - name: get replication primary
       mysql_replication:
         login_host: "{{ db_host1 }}"
-        login_user: "root"
-        mode: getprimary
+        login_user: "{{ user }}"
+        login_password: "{{ password }}"
+        mode: getmaster
       register: mysql_repli_host1
 
-    - name: get log position for master status
+    - name: get log position for master statuscvQab
       debug:
         var: mysql_repli_host1.Position
 
@@ -247,15 +306,16 @@
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
-        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host1 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host1.File }}', SOURCE_LOG_POS='{{ mysql_repli_host1.Position }}', SOURCE_SSL=1;"
+        - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host1 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host1.File }}', SOURCE_LOG_POS='{{ mysql_repli_host1.Position }}';"
 
     - name: start threads replication
       mysql_replication:
         login_host: "{{ db_host2 }}"
-        login_user: "root"
+        login_user: "replica"
         mode: startreplica
 
 - name: Configuring Master-server to replicate from Master-server - Master - {{ db_host2 }}
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   hosts: "{{ db_host2 }}"
   vars:
     user: "{{ user }}"
@@ -272,7 +332,8 @@
         state: present
   
 - name: Configuring Master-server to replicate from Master-server - {{ db_host1 }}
-  hosts: "{{ db_host2 }}"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
+  hosts: "{{ db_host1 }}"
   vars:
     user: "{{ user }}"
     password: "{{ password }}"
@@ -282,8 +343,8 @@
     - name: get replication primary
       mysql_replication:
         login_host: "{{ db_host2 }}"
-        login_user: "root"
-        mode: getprimary
+        login_user: "replica"
+        mode: getmaster
       register: mysql_repli_host2
 
     - name: get log position for master status
@@ -299,12 +360,12 @@
     - name: start replication
       mysql_replication:
         login_host: "{{ db_host2 }}"
-        login_user: "root"
+        login_user: "replica"
         mode: startreplica
 
 - name: Configurações Zabbix server node 1 - alteração do arquivo de configuração e criação do schema no Banco
   hosts: "{{ zabbix_server1 }}"
-  vars_files: "/archives/vars.yaml"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
     zabbix_server1: "{{ zabbix_server1 }}"
     password: "{{ password }}"
@@ -333,7 +394,7 @@
 
 - name: Configurações Zabbix server node 2 - alteração do arquivo de configuração
   hosts: "{{ zabbix_server2 }}"
-  vars_files: "/archives/vars.yaml"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
     zabbix_server2: "{{ zabbix_server2 }}"
     password: "{{ password }}"
@@ -360,19 +421,19 @@
 
 - name: Install and Configure php-fpm nginx zabbix-web
   hosts: "{{ web_host }}"
-  vars_files: "/archives/vars.yaml"
+  vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars: 
     web_host: "{{ web_host }}"
   tasks:  
     - name: Wget Repository Zabbix
       ansible.builtin.get_url:
-        url: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbisx-release-6.0-4.el8.noarch.rpm
-        dest: /home/ansible/
+        url: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
+        dest: /root
         mode: '0777'
 
     - name: Install .rpm package
       ansible.builtin.yum:
-        name: https://repo.zabbix.com/zabbix/6.0/rhel/8/x86_64/zabbix-release-6.0-4.el8.noarch.rpm
+        name: /root/zabbix-release-6.0-4.el8.noarch.rpm
         state: present 
 
     - name: Install Components Zabbbix
@@ -413,6 +474,7 @@
       loop: 
         - haproxy
         
+
 
 
 
