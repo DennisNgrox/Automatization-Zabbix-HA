@@ -67,6 +67,12 @@
  
      - Em construção
  
+ [Pacotes necessários]
+ 
+     - Necessário instalar:
+       - python3 -m pip install PyMySQL[rsa]
+       - python3 -m pip install pymysql
+ 
  
  <h1></h1>
  <div align="center">
