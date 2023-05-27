@@ -122,7 +122,7 @@
         priv: '*.*:ALL'
         state: present
 
-    - name: Create database user with name 'zabbix' and password '{{ password }}' with ALL database privileges
+    - name: Create database user with name 'zabbixweb' and password '{{ password }}' with ALL database privileges
       community.mysql.mysql_user:
         name: zabbixweb
         password: "{{ password }}"
@@ -373,7 +373,7 @@
         - mysql -u root --execute="CHANGE REPLICATION SOURCE TO SOURCE_HOST='{{ db_host2 }}', SOURCE_USER='{{ user }}', SOURCE_PORT=3306, SOURCE_PASSWORD='{{ password }}', SOURCE_LOG_FILE='{{ mysql_repli_host2.File }}', SOURCE_LOG_POS={{ mysql_repli_host2.Position }}, SOURCE_SSL=1;"
         - mysql -u root --execute="start replica;"
 
-- name: Configurações Zabbix server node 1 - alteração do arquivo de configuração e criação do schema no Banco
+- name: Configuration Zabbix server node 1 - Edit archive configure and create DBschema 
   hosts: "{{ zabbix_server1 }}"
   vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
@@ -382,7 +382,7 @@
     banco1: "{{ db_host1 }}"
     banco2: "{{ db_host2 }}"
   tasks:
-    - name: Configurações Zabbix
+    - name: Configuration Zabbix
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
@@ -402,7 +402,7 @@
         - zabbix-agent
         - zabbix-server
 
-- name: Configurações Zabbix server node 2 - alteração do arquivo de configuração
+- name: Configuration Zabbix server node 2 - Edit archive configure
   hosts: "{{ zabbix_server2 }}"
   vars_files: "/mnt/c/Users/Ageri/Desktop/SCRIPTS/ansible/archives/vars.yaml"
   vars:
@@ -411,7 +411,7 @@
     banco1: "{{ db_host1 }}"
     banco2: "{{ db_host2 }}"
   tasks:
-    - name: Configurações Zabbix
+    - name: Configuration Zabbix-server
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
@@ -496,7 +496,7 @@
               stats realm HAProxy\ Statistics
               stats auth admin:admin
 
-    - name: Configurations nginx
+    - name: Configuration nginx
       ansible.builtin.shell:
         cmd: "{{ item }}"
       loop:
@@ -523,5 +523,5 @@
         state: started
         enabled: true
       loop: 
-        - haproxy
-        
+        - haproxY
+
