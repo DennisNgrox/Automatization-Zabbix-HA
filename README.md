@@ -29,7 +29,7 @@
        - DB_MySQL_node2
        - Máquina responsável por executar o playbook
  
-  [infraestrutura]
+  [Infraestrutura]
  
       - Zabbix-Front_end 6.0
       - Zabbix-Server-node1 6.0
